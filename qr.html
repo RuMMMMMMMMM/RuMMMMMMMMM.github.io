@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>扫码进入 · 荔枝产销协同平台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: linear-gradient(160deg, #0E3D27 0%, #14663E 55%, #1B7A4B 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+    padding: 40px 44px 34px;
+    text-align: center;
+    max-width: 560px;
+    width: 100%;
+  }
+  .badge {
+    display: inline-block;
+    background: #E8F3EC;
+    color: #14663E;
+    border: 1px solid #CBE3D4;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 16px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  h1 { font-size: 26px; color: #0C3D26; margin-bottom: 6px; }
+  h1 span { color: #D92B4B; }
+  .sub { font-size: 14px; color: #8A9790; margin-bottom: 20px; }
+  .qr-box {
+    width: 300px;
+    height: 300px;
+    margin: 0 auto 16px;
+    border: 2px dashed #C9D4CD;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .qr-box canvas { width: 100%; height: 100%; object-fit: contain; }
+  .url {
+    font-family: Consolas, monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #14663E;
+    background: #F4F7F5;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    word-break: break-all;
+  }
+  .tips {
+    font-size: 13px;
+    color: #43564D;
+    line-height: 1.9;
+    text-align: left;
+    background: #FFF8EC;
+    border: 1px solid #F5E3BE;
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .tips b { color: #8A6A1F; }
+  .foot { margin-top: 16px; font-size: 11.5px; color: #9AA7A0; }
+  .err {
+    color: #8A9790;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">攀登计划校赛决赛 · 现场演示</div>
+    <h1>手机扫码 · 直接进入 <span>荔枝产销协同平台</span></h1>
+    <p class="sub">同一数据底座 · 四种角色视角 · 全部模拟数据</p>
+    <div class="qr-box" id="qrBox"></div>
+    <div class="url" id="urlBox">加载中…</div>
+    <div class="tips">
+      <b>使用方式：</b><br>
+      ① 手机与演示电脑连接 <b>同一 WiFi / 热点</b>（互联网访问则无需同网）<br>
+      ② 打开相机 / 微信「扫一扫」，对准上方二维码<br>
+      ③ 扫码后自动以游客身份进入平台，可直接查看驾驶舱、品种、价格预测等全部模块<br>
+      ④ 点击页面左上角 <b>☰</b> 可切换 农户 / 商户 / 合作社 / 消费者 四种角色视角
+    </div>
+    <div class="foot">东莞城市学院商学院 · 许斯豪团队 ｜ 指导教师：毛新平 · 孙湘晓 · 韩江键</div>
+  </div>
+  <script src="js/qrcode-gen.js"></script>
+  <script>
+    (function () {
+      var url;
+      if (location.protocol === 'file:') {
+        url = ''; // 本地直接打开：无服务地址，仅显示提示
+      } else {
+        url = location.protocol + '//' + location.host + '/';
+      }
+      var urlBox = document.getElementById('urlBox');
+      var qrBox = document.getElementById('qrBox');
+      if (url && window.QRGen) {
+        urlBox.textContent = url;
+        var canvas = document.createElement('canvas');
+        qrBox.appendChild(canvas);
+        try {
+          QRGen.draw(canvas, url, { ec: 'M', scale: 8, dark: '#0E3D27', quiet: 3 });
+        } catch (e) {
+          qrBox.innerHTML = '<div class="err">二维码生成失败<br>' + url + '</div>';
+        }
+      } else if (url) {
+        /* 无本地生成器时回退服务器 PNG（每次启动自动更新） */
+        urlBox.textContent = url;
+        var img = document.createElement('img');
+        img.src = '扫码进入.png?t=' + Date.now();
+        img.style.cssText = 'width:100%;height:100%;object-fit:contain';
+        img.onerror = function () {
+          qrBox.innerHTML = '<div class="err">二维码生成中…<br>请手动输入上方地址访问</div>';
+        };
+        qrBox.appendChild(img);
+      } else {
+        urlBox.textContent = '请通过演示服务器访问本页（双击“启动演示服务器.bat”）';
+        qrBox.innerHTML = '<div class="err">局域网演示模式：<br>运行启动脚本后本页将自动显示二维码</div>';
+      }
+    })();
+  </script>
+</body>
+</html>
