@@ -61,7 +61,7 @@ reghdfe income age edu, absorb(id year region#year) vce(cluster id)`}
  {type:'code', lang:'stata', title:'动态面板 GMM', body:
 `* 系统 GMM（Roodman xtabond2）
 ssc install xtabond2
-xtabond2 income L.income age edu, gmm(L.income, lag(2 4) collapse) \\\\
+xtabond2 income L.income age edu, gmm(L.income, lag(2 4) collapse) \\
     iv(age edu) twostep robust small
 * 关键诊断：AR(2) 检验 p>0.1（无二阶自相关）；Hansen J 检验 p 在 0.1-0.25 为宜`}
 ]},
@@ -77,8 +77,8 @@ xtabond2 income L.income age edu, gmm(L.income, lag(2 4) collapse) \\\\
  {type:'code', lang:'stata', title:'事件研究实现', body:
 `* eventstudy2（含显著性检验）
 ssc install eventstudy2
-eventstudy2 ret, id(id) date(date) events(eventdate) \\\\
-    evwlb(-5) evwub(10) estwlb(-120) estwub(-6) \\\\
+eventstudy2 ret, id(id) date(date) events(eventdate) \\
+    evwlb(-5) evwub(10) estwlb(-120) estwub(-6) \\
     model(market) index(mktret) noscale
 * 输出：CAR 均值、t 值（Patell/BMP）、作图数据
 

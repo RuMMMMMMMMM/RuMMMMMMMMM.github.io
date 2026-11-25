@@ -72,7 +72,7 @@ xtreg income l_income age edu, fe`}
 X = sm.add_constant(df[['age','income','edu_years','tenure']])
 vif = pd.Series([variance_inflation_factor(X.values, i)
                  for i in range(X.shape[1])], index=X.columns)
-print(vif)   // 任一列 VIF > 10 需处理`}
+print(vif)   # 任一列 VIF > 10 需处理`}
 ]},
 {h:'异方差与自相关', blocks:[
  {type:'ul', items:[
