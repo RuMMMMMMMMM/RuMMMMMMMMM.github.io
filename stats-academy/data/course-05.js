@@ -63,7 +63,7 @@ print(f"KMO = {kmo_model:.3f}, Bartlett p = {p:.4g}")
 
 fa = FactorAnalyzer(n_factors=3, rotation='varimax')
 fa.fit(df[cols])
-loadings = pd.DataFrame(fa.loadings_, index=cols)   // 载荷矩阵
+loadings = pd.DataFrame(fa.loadings_, index=cols)   # 载荷矩阵
 print(loadings.round(3))`}
 ]},
 {h:'t 检验：三种形态', blocks:[
@@ -80,7 +80,7 @@ t, p = stats.ttest_ind(df_male['sat'], df_female['sat'], equal_var=False)
 # 配对 t
 t, p = stats.ttest_rel(df['post'], df['pre'])
 # 效应量 Cohen's d
-d = (df_male['sat'].mean() - df_female['sat'].mean()) / \\\\
+d = (df_male['sat'].mean() - df_female['sat'].mean()) / \\
     ((df_male['sat'].std(ddof=1)**2 + df_female['sat'].std(ddof=1)**2) / 2) ** 0.5`}
 ]},
 {h:'方差分析（ANOVA）', blocks:[
