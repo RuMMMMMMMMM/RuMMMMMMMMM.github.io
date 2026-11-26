@@ -4,14 +4,24 @@
 const S = window.Stats;
 const COURSES = window.COURSES || [];
 const QUIZ = window.QUIZ || {};
+const ELEMENTS = window.ELEMENTS || [];
+const GAME = window.GAME || {badges:[]};
+const QUICKCHECKS = window.QUICKCHECKS || {};
+const SCENARIOS = window.SCENARIOS || {};
 const STORE_KEY = 'wb-stats-academy-v1';
-const CHART_KEY  = 'wb-stats-charts-v1';
 
 /* ================= 状态 ================= */
 const store = {
   completed: {},   // courseId -> true
   quizBest: {},    // courseId -> score(0-100)
-  robcheck: []     // 核验清单勾选状态
+  robcheck: [],    // 核验清单勾选状态
+  xp: 0,           // 经验值
+  badges: {},      // badgeId -> true
+  visitedElements: {},   // elementId -> true
+  quickCorrect: 0,       // 随堂测评累计答对
+  scenarioCorrect: 0,    // 情境练习累计答对
+  quickDone: {},         // quickcheckId -> best
+  scenarioDone: {}       // scenarioId -> best
 };
 try{
   const raw = localStorage.getItem(STORE_KEY);
@@ -23,6 +33,55 @@ function save(){
 const charts = [];   // 当前页面 ECharts 实例
 let currentCourseId = null;
 let pendingScroll = null;   // {sec, hl}
+
+/* ================= 游戏化引擎 ================= */
+function addXP(n, reason){
+  if(!n) return;
+  store.xp += n;
+  save();
+  toast('+' + n + ' XP · ' + reason);
+  updateGamify();
+  checkBadges();
+}
+function levelInfo(){
+  const lv = Math.floor(store.xp / GAME.xpPerLevel) + 1;
+  const cur = store.xp % GAME.xpPerLevel;
+  return {lv, cur, need: GAME.xpPerLevel};
+}
+function starsFor(courseId){
+  const best = store.quizBest[courseId];
+  if(best===undefined) return 0;
+  const r = GAME.starRule;
+  return best>=r.g3 ? 3 : (best>=r.g2 ? 2 : (best>=r.g1 ? 1 : 0));
+}
+function isUnlocked(courseId){
+  const idx = COURSES.findIndex(c=>c.id===courseId);
+  if(idx<=0) return true;
+  const prev = COURSES[idx-1];
+  return !!(store.completed[prev.id] || (store.quizBest[prev.id]!==undefined && store.quizBest[prev.id]>=60));
+}
+function checkBadges(){
+  let gained = false;
+  (GAME.badges||[]).forEach(b=>{
+    if(store.badges[b.id]) return;
+    try{
+      if(b.check(store)){
+        store.badges[b.id] = true;
+        gained = true;
+        setTimeout(()=>toast('🏅 获得徽章：'+b.name), 900);
+        store.xp += GAME.badgeXP;
+      }
+    }catch(e){}
+  });
+  if(gained){ save(); updateGamify(); }
+}
+function updateGamify(){
+  const l = levelInfo();
+  const lvEl = $('#levelText'), xpEl = $('#xpBar');
+  if(lvEl) lvEl.textContent = 'Lv.' + l.lv + ' · ' + store.xp + ' XP';
+  if(xpEl) xpEl.style.width = (l.cur / l.need * 100) + '%';
+  if($('#pathBtn')) $('#pathBtn').textContent = '🗺️ 闯关地图 · ' + Object.keys(store.badges).length + ' 徽章';
+}
 
 /* ================= 工具函数 ================= */
 const $ = s => document.querySelector(s);
@@ -76,18 +135,25 @@ function renderSidebar(filter){
     if(!hit) return;
     const done = !!store.completed[c.id];
     const best = store.quizBest[c.id];
+    const unlocked = isUnlocked(c.id);
+    const st = starsFor(c.id);
     const item = document.createElement('div');
     item.className = 'module-item' + (c.id===currentCourseId?' active':'') + (done?' done':'');
     item.innerHTML =
-      '<div class="module-icon">'+c.icon+'</div>' +
+      '<div class="module-icon">'+(unlocked?c.icon:'🔒')+'</div>' +
       '<div class="module-meta"><div class="module-no">'+c.no+' · '+esc(c.tag)+'</div>' +
-      '<div class="module-title">'+esc(c.title)+'</div></div>' +
+      '<div class="module-title">'+esc(c.title)+'</div>' +
+      (st>0?'<div class="module-tag">'+'★'.repeat(st)+'☆'.repeat(3-st)+'</div>':'') + '</div>' +
       '<div class="module-status"><span class="dot"></span>' +
       (best!==undefined?'<span class="quiz-badge">'+best+'分</span>':'') + '</div>';
-    item.onclick = ()=>{ closeSidebar(); goTo(c.id); };
+    item.onclick = ()=>{
+      if(!unlocked){ toast('🔒 关卡未解锁：先完成上一模块（测验 ≥60 分或标记完成）'); return; }
+      closeSidebar(); goTo(c.id);
+    };
     list.appendChild(item);
   });
   updateProgress();
+  updateGamify();
 }
 function updateProgress(){
   const n = Object.keys(store.completed).length;
@@ -102,12 +168,36 @@ function goTo(id){
   if(location.hash === h){ renderCourse(id); }
   else { location.hash = h; }
 }
+function goElement(id){
+  closeSidebar();
+  const h = '#/element/' + id;
+  if(location.hash === h){ renderElementPage(id); }
+  else { location.hash = h; }
+}
+function goPath(){
+  closeSidebar();
+  const h = '#/path';
+  if(location.hash === h){ renderPathPage(); }
+  else { location.hash = h; }
+}
 function parseHash(){
-  const m = location.hash.match(/^#\/course\/([\w-]+)$/);
-  return m ? m[1] : null;
+  let m = location.hash.match(/^#\/course\/([\w-]+)$/);
+  if(m) return {type:'course', id:m[1]};
+  m = location.hash.match(/^#\/element\/([\w-]+)$/);
+  if(m) return {type:'element', id:m[1]};
+  if(location.hash === '#/path') return {type:'path'};
+  return null;
 }
 function handleRoute(){
-  const id = parseHash() || (COURSES[0] && COURSES[0].id);
+  const r = parseHash();
+  if(r && r.type==='element'){ renderElementPage(r.id); return; }
+  if(r && r.type==='path'){ renderPathPage(); return; }
+  const id = (r && r.id) || (COURSES[0] && COURSES[0].id);
+  if(r && r.type==='course' && !isUnlocked(id)){
+    toast('🔒 关卡未解锁：先完成上一模块');
+    renderCourse(id);
+    return;
+  }
   renderCourse(id);
 }
 
@@ -120,10 +210,20 @@ function renderCourse(id){
   renderSidebar($('#searchBox').value);
 
   const quiz = QUIZ[id] || [];
+  const idx = COURSES.findIndex(x=>x.id===id);
+  const st = starsFor(id);
+  const unlocked = isUnlocked(id);
   let html = '';
   html += '<div class="course-hero"><div class="badge-line">'+
-    '<span class="chip">模块 '+c.no+'</span><span class="chip">'+esc(c.tag)+'</span></div>'+
-    '<h2>'+c.icon+' '+esc(c.title)+'</h2><p>'+esc(c.subtitle)+'</p></div>';
+    '<span class="chip">模块 '+c.no+'</span><span class="chip">'+esc(c.tag)+'</span>'+
+    '<span class="chip">第 '+(idx+1)+' 关 / 共 '+COURSES.length+' 关</span>'+
+    (unlocked?'':'<span class="chip" style="background:rgba(0,0,0,.25)">🔒 未解锁</span>')+
+    '</div>'+
+    '<h2>'+c.icon+' '+esc(c.title)+'</h2><p>'+esc(c.subtitle)+'</p>'+
+    '<div class="badge-line" style="margin-top:10px;margin-bottom:0"><span class="chip stars-chip">'+
+    (st>0?('★'.repeat(st)+'☆'.repeat(3-st)):'☆☆☆')+'</span>'+
+    (c.prerequisites?'<span class="chip" style="background:rgba(0,0,0,.22)">📖 '+esc(c.prerequisites)+'</span>':'')+
+    '</div></div>';
 
   html += '<div class="objectives"><h3>🎯 学习目标</h3><ol>'+
     c.objectives.map(o=>'<li>'+md(o)+'</li>').join('')+'</ol></div>';
@@ -144,12 +244,11 @@ function renderCourse(id){
     html += renderQuizHTML(c, quiz);
   }
 
-  const idx = COURSES.findIndex(x=>x.id===id);
   const prev = COURSES[idx-1], next = COURSES[idx+1];
   html += '<div class="page-nav">'+
-    (prev?'<button class="btn ghost" id="prevBtn">← 上一模块 · '+prev.no+' '+esc(prev.title)+'</button>':'<span></span>')+
-    '<button class="btn" id="doneBtn">'+(store.completed[id]?'✅ 已完成 · 点击取消':'✔ 标记本模块为已完成')+'</button>'+
-    (next?'<button class="btn ghost" id="nextBtn">下一模块 · '+next.no+' '+esc(next.title)+' →</button>':'<span></span>')+
+    (prev?'<button class="btn ghost" id="prevBtn">← 上一关 · '+prev.no+' '+esc(prev.title)+'</button>':'<span></span>')+
+    '<button class="btn" id="doneBtn">'+(store.completed[id]?'✅ 已完成 · 点击取消':'✔ 通关本模块')+'</button>'+
+    (next?'<button class="btn ghost" id="nextBtn">下一关 · '+next.no+' '+esc(next.title)+' →</button>':'<span></span>')+
     '</div>';
 
   $('#content').innerHTML = html;
@@ -158,10 +257,16 @@ function renderCourse(id){
   window.scrollTo(0,0);
 
   $('#doneBtn').onclick = ()=>{
-    if(store.completed[id]) delete store.completed[id]; else store.completed[id] = true;
+    if(store.completed[id]) delete store.completed[id];
+    else{
+      store.completed[id] = true;
+      addXP(GAME.completeXP, '通关模块 '+c.no+'「'+c.title+'」');
+      const nx = COURSES[idx+1];
+      if(nx && !isUnlocked(nx.id)) setTimeout(()=>toast('🎉 下一关已解锁：'+nx.no+' '+nx.title), 1400);
+    }
     save(); renderSidebar($('#searchBox').value);
     toast(store.completed[id] ? '已标记完成 🎉' : '已取消完成标记');
-    $('#doneBtn').textContent = store.completed[id] ? '✅ 已完成 · 点击取消' : '✔ 标记本模块为已完成';
+    $('#doneBtn').textContent = store.completed[id] ? '✅ 已完成 · 点击取消' : '✔ 通关本模块';
   };
   if(prev) $('#prevBtn').onclick = ()=>goTo(prev.id);
   if(next) $('#nextBtn').onclick = ()=>goTo(next.id);
@@ -180,6 +285,11 @@ function renderCourse(id){
   document.querySelectorAll('.tool-slot').forEach(el=>{
     const tid = el.dataset.tool;
     if(TOOLS[tid]) TOOLS[tid](el);
+  });
+
+  // 六要素入口
+  document.querySelectorAll('.elem-card').forEach(el=>{
+    el.onclick = ()=>goElement(el.dataset.eid);
   });
 
   // 测验绑定
@@ -214,6 +324,32 @@ function renderBlock(b, c){
       return '<div class="callout '+esc(b.kind||'tip')+'"><b>'+(b.title?esc(b.title):'')+'</b>'+
         (b.fx?'<div class="fx">'+b.fx+'</div>':'')+
         (b.body?'<div class="ct">'+md(b.body)+'</div>':'')+'</div>';
+    case 'analogy':
+      return '<div class="callout analogy"><b>'+(b.title?esc(b.title):'')+'</b>'+
+        (b.body?'<div class="ct">'+md(b.body)+'</div>':'')+'</div>';
+    case 'case':
+      return '<div class="case-card"><h4>📌 '+(b.title?esc(b.title):'案例演示')+'</h4>'+
+        '<div class="case-story">'+md(b.story)+'</div>'+
+        '<div class="steps">'+b.steps.map((s2,i)=>
+          '<div class="step-item"><span class="s-no">'+(i+1)+'</span><div><b>'+esc(s2.t)+'</b><p>'+md(s2.d)+'</p></div></div>').join('')+
+        '</div>'+
+        (b.conclusion?'<div class="case-conc"><b>💡 案例小结</b> '+md(b.conclusion)+'</div>':'')+
+        '</div>';
+    case 'steps':
+      return '<div class="steps">'+b.items.map((s2,i)=>
+        '<div class="step-item"><span class="s-no">'+(i+1)+'</span><div><b>'+esc(s2.t)+'</b><p>'+md(s2.d)+'</p></div></div>').join('')+'</div>';
+    case 'elements':
+      return '<div class="elem-grid">'+ELEMENTS.map(el=>
+        '<div class="elem-card" data-eid="'+el.id+'" style="--ec:'+el.color+'">'+
+        '<div class="ec-top"><div class="ec-icon">'+el.icon+'</div><div><h5>'+el.name+
+        '<span class="ec-en">'+el.en+'</span></h5></div></div>'+
+        '<p>'+esc(el.tagline)+'</p><span class="ec-go">进入「'+el.name+'」课堂</span></div>').join('')+'</div>';
+    case 'quickcheck':
+      return '<div class="tool-box"><div class="tool-label">⚡ 随堂测评（即时反馈，不计入正式成绩）</div>'+
+        '<div class="tool-slot" data-tool="quickcheck" data-qid="'+esc(b.id)+'"></div></div>';
+    case 'scenario':
+      return '<div class="tool-box"><div class="tool-label">🎯 情境练习（代入角色做决策）</div>'+
+        '<div class="tool-slot" data-tool="scenario" data-qid="'+esc(b.id)+'"></div></div>';
     case 'tool':
       return '<div class="tool-box"><div class="tool-label">🧪 交互工具</div><div class="tool-slot" data-tool="'+esc(b.id)+'"></div></div>';
   }
@@ -265,12 +401,22 @@ function bindQuiz(c){
     submit.disabled = true;
     const best = store.quizBest[c.id];
     if(best===undefined || pct>best){
+      if(best===undefined){
+        addXP(GAME.courseQuizBase + Math.round(pct*GAME.courseQuizPerPoint), '完成「'+c.title+'」测验');
+      } else {
+        addXP(Math.max(5, Math.round((pct-best)*GAME.courseQuizPerPoint)), '测验刷新纪录');
+      }
       store.quizBest[c.id] = pct;
       save(); renderSidebar($('#searchBox').value);
-      if(best===undefined) toast('测验完成！得分 '+pct+' 分');
+      if(best===undefined) toast('测验完成！得分 '+pct+' 分 · 获得 '+starsFor(c.id)+' 颗星 ⭐');
       else toast('新纪录！'+pct+' 分（原 '+best+' 分）');
     } else { toast('得分 '+pct+' 分（最高 '+best+' 分）'); }
     if(pct>=60 && !store.completed[c.id]){ store.completed[c.id]=true; save(); renderSidebar($('#searchBox').value); }
+    // 关卡解锁与徽章检查
+    const idx2 = COURSES.findIndex(x=>x.id===c.id);
+    const nx = COURSES[idx2+1];
+    if(nx && pct>=60 && !isUnlocked(nx.id)) setTimeout(()=>toast('🎉 下一关已解锁：'+nx.no+' '+nx.title), 1200);
+    setTimeout(checkBadges, 600);
   };
   retake.onclick = ()=>{
     const box = document.querySelector('.quiz-box');
@@ -666,14 +812,196 @@ TOOLS['robust-check'] = function(el){
     inp.onchange = ()=>{
       store.robcheck[+inp.dataset.i] = inp.checked;
       inp.closest('.check-item').classList.toggle('on', inp.checked);
-      save(); upd();
+      save(); upd(); checkBadges(); updateGamify();
       if(store.robcheck.filter(Boolean).length===items.length) toast('核验清单全部通过 🎉');
     };
   });
   upd();
 };
 
+/* 即时反馈练习引擎（随堂测评 / 情境练习 / 要素练习共用） */
+function renderPractice(el, items, kind, xpEach){
+  let html = '<div class="practice-box"><div class="pb-label">'+
+    (kind==='quick'?'⚡ 随堂测评':(kind==='scenario'?'🎯 情境练习':'✏️ 要素练习'))+'</div>';
+  html += '<div class="pb-sub">'+
+    (kind==='quick'?'点选立即判分 · 答对 +'+GAME.quickXP+' XP/题 · 可反复练习':
+     (kind==='scenario'?'代入角色做决策 · 答对 +'+GAME.scenarioXP+' XP/题 · 可反复练习':
+      '点选立即判分 · 答对 +'+xpEach+' XP/题'))+'</div>';
+  items.forEach((it,qi)=>{
+    html += '<div class="pb-q"><div class="qq">'+
+      (it.title?'<span class="tag">'+esc(it.title)+'</span>':'')+esc(it.q)+'</div>';
+    it.o.forEach((opt,oi)=>{
+      html += '<div class="pb-opt" data-q="'+qi+'" data-o="'+oi+'"><span class="mk"></span><span>'+esc(opt)+'</span></div>';
+    });
+    html += '<div class="pb-explain">'+esc(it.e)+'</div></div>';
+  });
+  html += '<div class="pb-score" id="pb-score"></div></div>';
+  el.innerHTML = html;
+  const scored = {};
+  const updateScore = ()=>{
+    const n = Object.keys(scored).length;
+    el.querySelector('#pb-score').textContent = n>0 ? ('已完成 '+n+' / '+items.length+' 题') : '';
+  };
+  el.querySelectorAll('.pb-opt').forEach(opt=>{
+    opt.onclick = ()=>{
+      const qi = +opt.dataset.q, oi = +opt.dataset.o;
+      if(scored[qi]!==undefined) return;
+      const qEl = opt.closest('.pb-q');
+      qEl.querySelectorAll('.pb-opt').forEach(o=>{
+        const oIdx = +o.dataset.o;
+        const isRight = oIdx===items[qi].a;
+        o.classList.add(isRight?'correct':(oIdx===oi?'wrong':''));
+        o.querySelector('.mk').textContent = isRight?'✔':(oIdx===oi?'✘':'');
+      });
+      scored[qi] = (oi===items[qi].a);
+      qEl.querySelector('.pb-explain').classList.add('show');
+      if(scored[qi]){
+        if(kind==='quick') store.quickCorrect = (store.quickCorrect||0)+1;
+        else if(kind==='scenario') store.scenarioCorrect = (store.scenarioCorrect||0)+1;
+        addXP(xpEach||(kind==='quick'?GAME.quickXP:GAME.scenarioXP), '答对练习');
+      } else {
+        toast('别灰心，看解析再想想 💪');
+      }
+      updateScore();
+      if(Object.keys(scored).length===items.length){
+        const total = Object.values(scored).filter(Boolean).length;
+        if(kind!=='element'){
+          const KEY = kind==='quick'?'quickDone':'scenarioDone';
+          store[KEY][el.dataset.qid] = total;
+        }
+        save();
+        el.querySelector('#pb-score').innerHTML = '🎉 本次答对 '+total+' / '+items.length+' 题'+(total===items.length?' · 全对，漂亮！':'');
+        checkBadges();
+        updateGamify();
+      }
+    };
+  });
+  updateScore();
+}
+TOOLS['quickcheck'] = function(el){
+  const qid = el.dataset.qid;
+  const items = QUICKCHECKS[qid] || QUICKCHECKS[String(qid).replace(/^qc-/,'')] || [];
+  if(!items.length){ el.innerHTML=''; return; }
+  renderPractice(el, items, 'quick');
+};
+TOOLS['scenario'] = function(el){
+  const qid = el.dataset.qid;
+  const items = SCENARIOS[qid] || SCENARIOS[String(qid).replace(/^sc-/,'')] || [];
+  if(!items.length){ el.innerHTML=''; return; }
+  renderPractice(el, items, 'scenario');
+};
+TOOLS['element-practice'] = function(el){
+  const e = ELEMENTS.find(x=>x.id===el.dataset.eid);
+  if(!e){ el.innerHTML=''; return; }
+  renderPractice(el, e.practice, 'element', 5);
+};
+
 function cell(k,v){ return '<div class="stat-cell"><div class="v">'+v+'</div><div class="k">'+esc(k)+'</div></div>'; }
+
+/* ================= 六要素详情页 ================= */
+function renderElementPage(id){
+  const e = ELEMENTS.find(x=>x.id===id);
+  if(!e){ $('#content').innerHTML = '<div class="empty-search">未找到该要素课堂</div>'; return; }
+  charts.forEach(ch=>{ try{ ch.dispose(); }catch(_){} }); charts.length = 0;
+  renderSidebar($('#searchBox').value);
+  if(!store.visitedElements[id]){
+    store.visitedElements[id] = true; save();
+    setTimeout(()=>addXP(GAME.elementVisitXP, '首次学习「'+e.name+'」课堂'), 300);
+  }
+  let html = '<div class="element-hero" data-icon="'+e.icon+'">'+
+    '<div class="badge-line"><span class="chip eh-tag">WorkBuddy 六要素 · '+esc(e.en)+'</span>'+
+    '<span class="chip" style="background:rgba(0,0,0,.25)">深入教学</span></div>'+
+    '<h2>'+e.icon+' '+esc(e.name)+'</h2><p>'+esc(e.tagline)+'</p></div>';
+
+  html += '<div class="section"><h3><span class="num">①</span>概念说明</h3>'+
+    e.concept.map(p=>'<p>'+md(p)+'</p>').join('')+'</div>';
+
+  html += '<div class="section"><h3><span class="num">②</span>使用场景</h3><div class="element-sub">'+
+    e.scenarios.map(s=>'<div class="es-item"><b>'+s.icon+' '+esc(s.t)+'</b><p>'+esc(s.d)+'</p></div>').join('')+
+    '</div></div>';
+
+  html += '<div class="section"><h3><span class="num">③</span>关键功能</h3><ul>'+
+    e.features.map(f=>'<li><b>'+esc(f.t)+'</b>：'+md(f.d)+'</li>').join('')+'</ul></div>';
+
+  html += '<div class="section"><h3><span class="num">④</span>操作流程</h3><div class="steps">'+
+    e.flow.map((s,i)=>'<div class="step-item"><span class="s-no">'+(i+1)+'</span><div><b>'+esc(s.t)+'</b><p>'+esc(s.d)+'</p></div></div>').join('')+
+    '</div></div>';
+
+  html += '<div class="section"><h3><span class="num">⑤</span>案例演示</h3>'+
+    '<div class="case-card"><h4>📌 '+esc(e.demo.title)+'</h4><div class="case-story">'+md(e.demo.story)+'</div>'+
+    '<div class="code-block"><div class="code-head"><span class="lang">'+esc(e.demo.code.lang)+' · '+esc(e.demo.code.title)+'</span><button class="copy">复制</button></div><pre>'+esc(e.demo.code.body)+'</pre></div>'+
+    '<div class="case-conc"><b>💡 案例小结</b> '+md(e.demo.result)+'</div></div></div>';
+
+  html += '<div class="section"><h3><span class="num">⑥</span>练习任务</h3>'+
+    '<div class="tool-box"><div class="tool-label">✏️ 即时反馈练习（答对 +5 XP）</div>'+
+    '<div class="tool-slot" data-tool="element-practice" data-eid="'+e.id+'"></div></div></div>';
+
+  html += '<div class="page-nav"><span></span><button class="btn" id="backToCourse">← 返回模块 01 工作流</button><span></span></div>';
+
+  $('#content').innerHTML = html;
+  $('#crumb').innerHTML = 'WorkBuddy 数据统计分析学院 / <b>六要素 · '+esc(e.name)+'</b>';
+  document.title = e.name + ' · 六要素课堂 · WorkBuddy 数据统计分析学院';
+  window.scrollTo(0,0);
+  $('#backToCourse').onclick = ()=>goTo('01-workflow');
+  document.querySelectorAll('.copy').forEach(btn=>{
+    btn.onclick = ()=>{
+      const code = btn.closest('.code-block').querySelector('pre').innerText;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(code).then(()=>toast('已复制到剪贴板'));
+      } else { toast('复制失败：浏览器不支持'); }
+    };
+  });
+  const slot = document.querySelector('.tool-slot[data-tool="element-practice"]');
+  if(slot && TOOLS['element-practice']) TOOLS['element-practice'](slot);
+}
+
+/* ================= 闯关地图与徽章 ================= */
+function renderPathPage(){
+  charts.forEach(ch=>{ try{ ch.dispose(); }catch(_){} }); charts.length = 0;
+  renderSidebar($('#searchBox').value);
+  const totalStars = COURSES.reduce((s2,c)=>s2+starsFor(c.id),0);
+  const l = levelInfo();
+  let html = '<div class="path-hero"><h2>🗺️ 闯关地图</h2>'+
+    '<p>按顺序通关 8 大模块，集齐 24 颗星、点亮全部 '+((GAME.badges||[]).length)+' 枚徽章！</p>'+
+    '<span class="xp-chip">⭐ '+totalStars+' / '+(COURSES.length*3)+' 星</span> '+
+    '<span class="xp-chip">🏅 '+Object.keys(store.badges).length+' / '+((GAME.badges||[]).length)+' 徽章</span> '+
+    '<span class="xp-chip">Lv.'+l.lv+' · '+store.xp+' XP（升级差 '+(l.need-l.cur)+' XP）</span></div>';
+
+  html += '<div class="section"><h3><span class="num">🗺️</span>关卡进度（点击可进入）</h3><div class="path-row">';
+  COURSES.forEach((c,i)=>{
+    const unlocked = isUnlocked(c.id);
+    const st = starsFor(c.id);
+    const best = store.quizBest[c.id];
+    html += '<div class="level-node '+(unlocked?'':'locked')+' '+(st>0?'done':'')+'" data-cid="'+c.id+'">'+
+      (unlocked?'':'<span class="ln-lock">🔒</span>')+
+      '<div class="ln-no">第 '+(i+1)+' 关 · '+esc(c.tag)+'</div>'+
+      '<h5>'+c.icon+' '+esc(c.title)+'</h5>'+
+      '<span class="ln-tag">'+esc((c.subtitle||'').split('·')[0].trim())+'</span>'+
+      '<div class="stars">'+'<span class="'+(st>=1?'on':'')+'">★</span><span class="'+(st>=2?'on':'')+'">★</span><span class="'+(st>=3?'on':'')+'">★</span></div>'+
+      '<div class="ln-status">'+(unlocked ? (best!==undefined?'测验最高 '+best+' 分 · '+(st===3?'完美通关！':'继续冲刺 ⭐'):'可以开始挑战') : '先完成上一关')+'</div>'+
+      '</div>';
+  });
+  html += '</div></div>';
+
+  html += '<div class="section"><h3><span class="num">🏅</span>徽章墙</h3><div class="badge-wall">'+
+    (GAME.badges||[]).map(b=>{
+      const earned = !!store.badges[b.id];
+      return '<div class="badge '+(earned?'earned':'locked')+'"><div class="bd-icon">'+b.icon+'</div>'+
+        '<div class="bd-name">'+b.name+'</div><div class="bd-desc">'+b.desc+'</div></div>';
+    }).join('')+'</div></div>';
+
+  $('#content').innerHTML = html;
+  $('#crumb').innerHTML = 'WorkBuddy 数据统计分析学院 / <b>闯关地图</b>';
+  document.title = '闯关地图 · WorkBuddy 数据统计分析学院';
+  window.scrollTo(0,0);
+  document.querySelectorAll('.level-node').forEach(n=>{
+    n.onclick = ()=>{
+      const cid = n.dataset.cid;
+      if(!isUnlocked(cid)){ toast('🔒 关卡未解锁：先完成上一模块（测验 ≥60 分或标记完成）'); return; }
+      goTo(cid);
+    };
+  });
+}
 
 /* ================= 搜索 ================= */
 function doSearch(q){
@@ -740,6 +1068,8 @@ function reportHTML(){
       '<td>'+(best!==undefined?best+' 分':'—')+'</td></tr>';
   }).join('');
   const robN = store.robcheck.filter(Boolean).length;
+  const lv = levelInfo();
+  const stars = COURSES.reduce((s2,c)=>s2+starsFor(c.id),0);
   const avg = (()=>{ const s = COURSES.map(c=>store.quizBest[c.id]).filter(x=>x!==undefined);
     return s.length? Math.round(s.reduce((a,b)=>a+b,0)/s.length) : null; })();
   return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>学习报告</title><style>'+
@@ -755,7 +1085,8 @@ function reportHTML(){
     '<h1>📊 WorkBuddy 数据统计分析学院 · 学习报告</h1>'+
     '<div class="meta">生成时间：'+new Date().toLocaleString('zh-CN')+'<br>'+
     '学习进度：'+done.length+' / '+COURSES.length+' 模块'+
-    (avg!==null? ' ｜ 测验平均分：'+avg+' 分':'')+' ｜ 结果核验清单：'+robN+' / 10 项通过</div>'+
+    (avg!==null? ' ｜ 测验平均分：'+avg+' 分':'')+' ｜ 结果核验清单：'+robN+' / 10 项通过<br>'+
+    '游戏化成绩：Lv.'+lv.lv+' · '+store.xp+' XP ｜ ⭐ '+stars+' / '+(COURSES.length*3)+' 星 ｜ 🏅 '+Object.keys(store.badges).length+' 枚徽章</div>'+
     '<h2>课程完成情况</h2><table><thead><tr><th>模块</th><th>状态</th><th>测验最高分</th></tr></thead><tbody>'+rows+'</tbody></table>'+
     '<h2>学习建议</h2><ul>'+
     (done.length<COURSES.length?'<li>尚有 '+(COURSES.length-done.length)+' 个模块未完成，建议按顺序继续学习。</li>':'<li>全部模块已完成，建议结合真实数据完成一个完整项目练习。</li>')+
@@ -817,9 +1148,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // 抽屉内滑动不穿透背景
   $('#sidebar').addEventListener('touchmove', e=>{ if($('#sidebar').classList.contains('open')) e.stopPropagation(); }, {passive:true});
   $('#reportBtn').onclick = exportReport;
+  $('#pathBtn').onclick = goPath;
   // 首屏
   renderSidebar('');
   handleRoute();
+  checkBadges();
   if(!location.hash && COURSES[0]) location.replace('#/course/'+COURSES[0].id);
 });
 })();
