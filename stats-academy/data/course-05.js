@@ -4,6 +4,7 @@ if(!window.COURSES) window.COURSES=[];
 window.COURSES.push({
 id:'05-survey', no:'05', icon:'📝', title:'问卷分析与统计推断', tag:'SURVEY', keywords:['问卷','Likert','信度','Cronbach','KMO','因子分析','t检验','方差分析','卡方','ANOVA'],
 subtitle:'Likert 量表 · Cronbach\'s α · KMO / EFA · t 检验 · 方差分析 · 卡方',
+prerequisites:'先修：模块 02（变量类型）、04（描述统计）',
 objectives:[
   '掌握 Likert 量表设计规范（点数、反向题、合成计分）',
   '会计算并解读 Cronbach\'s α 信度与 KMO/EFA 效度',
@@ -113,11 +114,26 @@ tukey = pairwise_tukeyhsd(df['income'], df['edu'], alpha=0.05)`}
 tab gender turnover, exact               // 小样本 Fisher 精确检验
 csgof edu, expperc(10 30 40 20)          // 拟合优度（按设定比例）`}
 ]},
+{h:'案例：员工满意度调查全流程', blocks:[
+ {type:'analogy', title:'通俗类比 · 信效度是问卷的地基', body:'盖楼先验地基：地基（信效度）不合格，楼上（t 检验、回归）装得再漂亮也是危房。**α 告诉你「题目之间是否一条心」，KMO 告诉你「题目是否适合提炼结构」——这两个过了，推断才有意义。**'},
+ {type:'case', title:'1000 份问卷的完整旅程', story:'HR 团队发放了员工满意度问卷（5 个维度 × 7 题，含 3 道反向题），回收 1024 份。你按标准流程走完全程：',
+   steps:[
+    {t:'第 1 步 · 反向计分', d:'3 道反向题翻转：新分 = 6 − 原分（5 点量表），防止作答偏差干扰总分。'},
+    {t:'第 2 步 · 信度检验', d:'各维度 Cronbach\'s α 介于 0.82~0.91 → 全部合格，可进入效度分析。'},
+    {t:'第 3 步 · 效度检验', d:'KMO = 0.88、Bartlett p<0.001 → EFA 提取出 5 个因子，与设计维度一一对应。'},
+    {t:'第 4 步 · 描述与比较', d:'总分均值 24.2/35；部门间 ANOVA 显著 → Tukey 事后检验：客服部显著低于研发部。'},
+    {t:'第 5 步 · 效应量把关', d:'性别差异 t 检验显著但 Cohen\'s d = 0.12（微小）→ 报告时如实说明「差异显著但实际意义有限」。'},
+    {t:'第 6 步 · 报告', d:'三线表（各维度 α + 均值 ± SD）+ 分部门箱线图 + 结论段。'}
+   ],
+   conclusion:'先信效度、后推断：α 和 KMO 就是问卷分析的「体检报告」——体检过了，后面的比较与回归结论才有地基。'},
+ {type:'quickcheck', id:'qc-05-survey'}
+]},
 {h:'问卷分析标准顺序', blocks:[
  {type:'ol', items:[
    '数据清洗与反向计分（模块 03）→ 2. 描述统计（模块 04）→ 3. 信度 α → 4. 效度 KMO/EFA → 5. 组间比较（t/ANOVA/卡方）→ 6. 关系模型（回归，模块 06）→ 7. 稳健性与报告（模块 08）。',
    '**信效度不合格就不要进入推断**：α<0.6 或 KMO<0.5 时先修订量表，否则后续结论没有地基。'
- ]}
+ ]},
+ {type:'scenario', id:'sc-05-survey'}
 ]}
 ],
 faq:[
