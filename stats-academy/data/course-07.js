@@ -4,6 +4,7 @@ if(!window.COURSES) window.COURSES=[];
 window.COURSES.push({
 id:'07-panel', no:'07', icon:'🗂️', title:'面板数据与事件研究', tag:'PANEL DATA', keywords:['面板','固定效应','随机效应','Hausman','双向固定','动态面板','GMM','事件研究','CAR','Stata','MCP'],
 subtitle:'固定效应 · 随机效应 · 双向固定 · 动态效应 · Stata-MCP 协同',
+prerequisites:'先修：模块 02（数据结构）、06（回归基础）',
 objectives:[
   '理解面板数据结构的优势与 xtset 设定',
   '掌握固定效应 / 随机效应的选择逻辑与 Hausman 检验',
@@ -52,6 +53,19 @@ reghdfe income age edu, absorb(id year) vce(cluster id)
 * 方法三：双向 FE + 交互固定效应（地区×年份）
 reghdfe income age edu, absorb(id year region#year) vce(cluster id)`}
 ]},
+{h:'案例：省份数字经济的效应', blocks:[
+ {type:'analogy', title:'通俗类比 · 固定效应是「跟自己比」', body:'固定效应的逻辑像减肥记录：**你只跟过去的自己比**（同一省份 2015 vs 2020），而不是跟别的省比。个体固定效应先把「每个省自己的底色」（地理、文化、资源）扣掉，剩下的变化才用来识别因果。'},
+ {type:'case', title:'30 省 × 12 年面板的完整实证', story:'你研究「数字经济指数对绿色创新的影响」，数据是 30 省 2010-2021 年面板，绿色创新用绿色专利数衡量。',
+   steps:[
+    {t:'第 1 步 · 面板体检', d:'xtset + xtdes：平衡面板，T=12；xtsum 显示核心变量组内变异充足。'},
+    {t:'第 2 步 · 基准回归', d:'双向固定效应（省份 + 年份），标准误按省份聚类——基准系数 0.183（p<0.01）。'},
+    {t:'第 3 步 · FE vs RE', d:'Hausman 检验 p<0.01 → 个体效应与解释变量相关，采用固定效应。'},
+    {t:'第 4 步 · 动态效应', d:'加入滞后一期绿色创新，系统 GMM 重估 → 核心结论稳健。'},
+    {t:'第 5 步 · 稳健性', d:'替换绿色创新指标（专利授权数）、1% 缩尾重估 → 系数方向与显著性不变。'}
+   ],
+   conclusion:'对比混合 OLS（忽略省份差异）的系数，固定效应结果小了约 40%——**面板数据用普通回归，等于把「省份底色」错算成了数字经济的作用。**'},
+ {type:'quickcheck', id:'qc-07-panel'}
+]},
 {h:'动态面板与 GMM', blocks:[
  {type:'ul', items:[
    '**动态效应**：当期的 Y 依赖过去的 Y（惯性、调整成本），设定 Yᵢₜ = βYᵢ,ₜ₋₁ + γXᵢₜ + αᵢ + εᵢₜ。',
@@ -95,7 +109,8 @@ eventstudy2 ret, id(id) date(date) events(eventdate) \\
 ④ 模型初读结果: 系数方向、显著性、样本量
 ⑤ 分析员复核 + 稳健性检验(模块 08) + 人工撰写结论
 ⑥ 结果表经 esttab 导出三线表 → 报告(模块 08)`},
- {type:'callout', kind:'warn', title:'协同纪律', body:'MCP 执行的是「计算」，不是「判断」。工具变量有效性、GMM 诊断、事件窗设定等统计判断必须由人做最终决定；模型输出的一切结果都应能回溯到脚本与日志。'}
+ {type:'callout', kind:'warn', title:'协同纪律', body:'MCP 执行的是「计算」，不是「判断」。工具变量有效性、GMM 诊断、事件窗设定等统计判断必须由人做最终决定；模型输出的一切结果都应能回溯到脚本与日志。'},
+ {type:'scenario', id:'sc-07-panel'}
 ]}
 ],
 faq:[
