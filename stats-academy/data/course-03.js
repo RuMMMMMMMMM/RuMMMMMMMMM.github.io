@@ -39,7 +39,7 @@ sections:[
 
 # 1) 缺失体检
 miss = df.isna().mean().sort_values(ascending=False)
-print("缺失率排名:\n", miss[miss > 0])
+print("缺失率排名:\\n", miss[miss > 0])
 
 # 2) 低缺失 → 删除；高缺失 → 删列
 df = df.dropna(subset=['核心变量'], how='any')      # 核心变量缺失即删行
